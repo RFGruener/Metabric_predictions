@@ -1,0 +1,103 @@
+---
+title: "Predictions"
+author: "Robert F Gruener"
+date: "6/26/2021"
+output: html_document
+---
+
+
+Expression uses an illumina probe. Looking at the [original publication](http://europepmc.org/article/MED/22522925#S8), the probeset is Illumina HT-12 v3
+
+
+Install the illuminaHumanv3.db package to enable conversion
+
+```{r}
+#install or update these packages if needed:
+
+#install.packages("BiocManager")
+#BiocManager::install("illuminaHumanv3.db") #Bioconductor version '3.12' requires R version '4.0'; use `BiocManager::install(version = '3.13')` with R version 4.1; see https://bioconductor.org/install
+
+
+
+```
+
+
+Load libraries and read in Metabric Expression Data
+
+```{r}
+
+library(tidyverse)
+library(illuminaHumanv3.db)
+
+Metabric_expression <- read_csv("Metabric Data/Complete_normalized_expression_data_METABRIC.csv") #load in metabric data
+
+Metabric_expression[1:5,1:5] #preview
+
+symbol_look <- data.frame(Gene=unlist(mget(x = Metabric_expression$ILMN_Probe, envir = illuminaHumanv3SYMBOL)))
+
+table(is.na(symbol_look$Gene)) #returns 20,000 NA values...
+
+ensem_look <- data.frame(Gene=unlist(mget(x = Metabric_expression$ILMN_Probe, envir = illuminaHumanv3ENSEMBL)))
+
+table(is.na(ensem_look$Gene)) #still returns 20,000 NA values... may need to look into, but it seems like these values don't map to genes surprisingly?
+
+#the symbol map and the metabric expression data are the same length and same order, filter the NA rows out of both
+
+filtered_metabric <- Metabric_expression[!is.na(symbol_look$Gene),]
+
+#setting row names at this point doesnt't work
+#For some reason, a lot of the illumina probes map on to the same gene
+#row.names(filtered_metabric) <- symbol_look$Gene[!is.na(symbol_look$Gene)]
+
+genes <- na.omit(symbol_look$Gene)
+
+dups_sample <- genes[duplicated(genes)]
+
+filtered_metabric[genes %in% dups_sample, ]
+
+
+symbol_look$Gene[!is.na(symbol_look$Gene)][duplicated(symbol_look$Gene[!is.na(symbol_look$Gene)])]
+
+# 
+# 
+# genes <- na.omit(ensem_look$Gene)
+# 
+# dups_sample <- genes[duplicated(genes)]
+# 
+# genes[genes %in% dups_sample[1:10]]
+# 
+# 
+# 
+# table(duplicated(filtered_metabric$ILMN_Probe))
+```
+
+
+
+```{r}
+set.seed(12345)
+#install.packages("oncoPredict")
+
+library(oncoPredict)
+
+
+
+```
+
+
+
+
+```{r}
+
+Response_data <- readRDS("Prepped_Data/CTRPv2_Response_Matrix.rds")
+
+#calcPhenotype(trainingExprData = Comple,
+              #trainingPtype = Response_data)
+```
+
+
+
+
+
+
+
+
