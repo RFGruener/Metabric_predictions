@@ -33,7 +33,7 @@ Metabric_expression <- read_csv("Metabric Data/Complete_normalized_expression_da
 
 Metabric_expression[1:5,1:5] #preview
 
-symbol_look <- data.frame(Gene=unlist(mget(x = Metabric_expression$ILMN_Probe, envir = illuminaHumanv3SYMBOL)))
+symbol_lookup <- data.frame(Gene=unlist(mget(x = Metabric_expression$ILMN_Probe, envir = illuminaHumanv3SYMBOL))) #create a map for ID to symbols
 
 table(is.na(symbol_look$Gene)) #returns 20,000 NA values...
 
