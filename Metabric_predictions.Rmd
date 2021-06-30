@@ -191,19 +191,7 @@ oncoPredict::calcPhenotype(trainingExprData = training_expression_data,
 ```
 
 
-
-
-```{r}
-
-Response_data <- readRDS("Prepped_Data/CTRPv2_Response_Matrix.rds")
-
-#calcPhenotype(trainingExprData = Comple,
-              #trainingPtype = Response_data)
-```
-
-
-
-
+A folder should be created in the working directory titled calcPhenotype_Output which has a .csv file titled DrugPredictions.csv. We'll use this in the next script: Analyze_predictions.Rmd
 
 
 
