@@ -1,0 +1,159 @@
+---
+title: "Analyze Predictions"
+author: "Robert F Gruener"
+date: "6/30/2021"
+output: html_document
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = F, message = FALSE, cache = T)
+```
+
+Analysis outline: 
+
+  * Get the group information from the clinical data sheet
+  * Format predictions, merge with clinical data
+  * Perform t-tests and correct for multiple testing 
+  * Graph results 
+  
+
+Load libraries
+```{r install packages, include= FALSE}
+library(broom)
+library(grid)
+library(ggrepel)
+library(tidyverse)
+
+theme_set(theme_bw())
+```
+
+Get in the clinical information
+```{r}
+metabric_clinical <- read_csv("Metabric Data/Complete_METABRIC_Clinical_Features_Data.csv")
+
+BRCA_clinical <- metabric_clinical %>% 
+  select(Patient_ID, PAM50 = NOT_IN_OSLOVAL_Pam50Subtype) %>% 
+  filter(PAM50 %in% c("Normal", "LumA", "LumB", "Her2", "Basal")) %>% 
+  mutate(TNBC_status = if_else(PAM50 == "Basal", "Basal", "Non-Basal"))
+```
+
+### Merging Predictions with clinical data
+Next we need to load and format the prediction dataset, then we merge it with the clinical data we previously downloaded
+
+```{r format predictions, include = FALSE}
+CTRPDrugPredictions_mat <- read_csv("./calcPhenotype_Output/DrugPredictions.csv")
+
+BRCA_preds <- CTRPDrugPredictions_mat %>% rename("Patient_ID" = X1) 
+
+#checked nad there were no duplicate sample names.
+
+#let's only look at drugs with a good cross-validation score
+
+CTRP_cv <- read_csv("./Prepped_Data/20FoldCV_CTRP.csv")
+
+CTRP_cv <- CTRP_cv %>% 
+  filter(!grepl(pattern = "mol/mol", Drug))
+
+cv_cutoff <- CTRP_cv %>% 
+  filter(Spearman_Pvalue < 0.05,
+         Spearman_Correlation > 0)
+
+bad_cv_drugs <- anti_join(CTRP_cv, cv_cutoff)
+bad_cv_drugs <- bad_cv_drugs$Drug
+
+
+
+
+BRCA_preds <- BRCA_preds %>% 
+  gather(key = "Drug", value = "PSS", -Patient_ID) %>% #turns the table into a long format
+  mutate(Drug = replace(Drug, Drug == "MK-1775", "AZD-1775")) %>%  #replaces MK-1775 as AZD-1775 since AZD-1775 is the more common name currently even though this is not how it is written in the database
+  filter(!Drug %in% bad_cv_drugs,
+         !grepl(pattern = "mol/mol", Drug)) #filter out drugs with poor CV results
+
+
+#join with clinical information
+preds.subtype <- left_join(BRCA_preds, BRCA_clinical, by = c("Patient_ID" = "Patient_ID")) %>% 
+  drop_na(PAM50)
+
+
+```
+
+Let's print out some information about these patients
+
+```{r}
+preds.subtype %>% select(Patient_ID, PAM50) %>% distinct() %>% count(PAM50)
+
+```
+
+### Identifying Compounds Predicted To Be More Effective in TNBC
+
+
+To look for compounds that are more effective in TNBC vs other breast cancers (i.e. receptor positive or RPBC), we can subset the patients into their corresponding TNBC status and perform t-tests on the imputed drug data for each drug. Then we can correct for multiple test corrections. 
+
+```{r Statistical testing}
+t.tst_preds.subtype <- preds.subtype %>% 
+  group_by(Drug) %>%  #group by drug so that each statistical test is performed for each drug
+  do(tidy(t.test(PSS~TNBC_status, data = .))) %>% #way to perform t-tests and get the results from the t-test into a tbl format
+  ungroup() %>% #need to ungroup so that when we adjust we are adjusting everything, otherwise the group is set to make each drug independent
+  mutate(bonf_p.value = p.adjust(p.value, method = "bonferroni")) %>% 
+  mutate(log10_p.correct = -log10(bonf_p.value)) 
+
+```
+
+
+
+
+```{r, echo= FALSE}
+#total number of significant results
+print("total")
+sum(t.tst_preds.subtype$bonf_p.value < 0.01)
+
+#total number for TNBC
+print("significant results in TNBC")
+sum(t.tst_preds.subtype[t.tst_preds.subtype$estimate > 0,]$bonf_p.value < 0.01)
+
+
+t.tst_preds.subtype %>% 
+  ggplot() +
+    geom_histogram(mapping = aes(x = log10_p.correct)) +
+    geom_vline(xintercept = -log10(0.01), color = "red") +
+    labs(title = "Histogram of T-test Results by Signifcance", 
+         y = "Number of Drugs", 
+         x = "-log10(bonferroni-adjusted p-value)")
+
+```
+
+
+The take away from the above: 
+Based on t-tests, even with a bonferroni correction, most of the values are statistically signifcant. From this table `r sum(t.tst_preds.subtype$bonf_p.value < 0.01/length(unique(t.tst_preds.subtype$Drug)), na.rm = TRUE)`% are statistically significant at a corrected p-value of 0.01 out of the `r length(unique(t.tst_preds.subtype$Drug))`total drugs. This does indicte that we are getting an enrichment of likely false positive results, so the best thing to do would be to just consider the most significant results, essentially placing a much higher significant cutoff threshold. This should be investigated in future analysis. 
+
+
+
+To visualize the t-test results, we can create a volcano plot and look for the most significant results: 
+
+```{r volcano plot of Estimate vs p-value}
+
+#making version of plot for text
+dir.create(path = "./Figures")
+
+volcano.plot <- t.tst_preds.subtype %>% 
+  arrange(desc(log10_p.correct)) %>% 
+  dplyr::slice(1:3) %>% 
+  ggplot(mapping = aes(x = estimate, y = log10_p.correct)) + 
+    geom_point(data = t.tst_preds.subtype) +
+    geom_point(color = "red", size = 2.2) + 
+    geom_text_repel(nudge_y = 3, mapping = aes(label = Drug)) + 
+    theme_bw(base_size = 16) +
+    labs(y = "-log10(adjusted p-value)", 
+         x = "Mean Difference (Imputed Effect Basal - Non-Basal)", 
+         caption = c("Drugs More\nEffective in Basal", " Drugs More\nEffective in Non-Basal")) + 
+    theme(plot.caption = element_text(hjust=c(1, -0.1))) 
+    
+volcano.plot
+
+ggsave(filename = "./Figures/Metabric_volcanoPlot.TIFF", device = "tiff", plot = volcano.plot, height = 5.5, width = 7)
+    
+```
+
+
+
