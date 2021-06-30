@@ -36,6 +36,8 @@ Metabric_expression[1:5,1:5] #preview
 
 ```
 
+Mapping Illumina probe to Gene names
+
 
 ```{r}
 symbol_lookupup <- data.frame(Gene=unlist(mget(x = Metabric_expression$ILMN_Probe, envir = illuminaHumanv3SYMBOL))) #create a map for ID to symbols
@@ -52,7 +54,7 @@ table(is.na(ensem_look$Gene)) #still returns 20,657 NA values... may need to loo
 #the symbol map and the metabric expression data are the same length and same order, so add in the Gene column
 
 Metabric_expression$Gene <- symbol_lookupup$Gene
-Metabric_expression <- select(Metabric_expression, ILMN_Probe, Gene, everything())
+Metabric_expression <- dplyr::select(Metabric_expression, ILMN_Probe, Gene, everything())
 
 Metabric_expression[1:5, 1:5] #preview
 ```
@@ -144,12 +146,12 @@ to_keep <- dups_genes[correlation_dupgenes > 0.6]
 
 temp_dup_metabric <- filtered_metabric %>% 
   filter(Gene %in% to_keep) %>% 
-  group_by(Gene) %>% 
-  summarise_if(is.numeric, mean)
+  group_by(Gene) %>% #group by gene duplicates
+  summarise_if(is.numeric, mean) #average the columns (for each gene, average the columns)
 
 metabric_expression_final <- filtered_metabric %>% 
   filter(!Gene %in% dups_genes) %>% #remove all duplicates
-  select(-ILMN_Probe) %>%  #get rid of the extra column 
+  dplyr::select(-ILMN_Probe) %>%  #get rid of the extra column 
   bind_rows(., temp_dup_metabric) #add back the genes that we averaged above. 
 
 ```
@@ -163,7 +165,7 @@ training_expression_data <- readRDS("Prepped_Data/CTRP_Expression_Matrix.rds")
 
 convert.to.matrix <- function(df){
   temp <- as.matrix(df[,-1])
-  row.names(temp) <- pull(df, 1)
+  row.names(temp) <- dplyr::pull(df, 1)
   return(temp)
   
 }
@@ -177,6 +179,13 @@ library(oncoPredict)
 
 #to make this a little faster, I'm not running it with all drugs, just a few
 ptype_info <- Response_data[, which(colnames(Response_data) %in% c("leptomycin B", "MK-1775", "tamoxifen"))]
+#change the above line. But you could remove drugs that have a mol/mol ratio (i.e. combination therapies)
+
+#run this to remove all combinations
+ptype_info <- Response_data[, !grepl(pattern = "mol/mol", x = colnames(Response_data))]
+
+#or just run the whole thing
+ptype_info <- Response_data
 
 
 oncoPredict::calcPhenotype(trainingExprData = training_expression_data, 
@@ -186,6 +195,7 @@ oncoPredict::calcPhenotype(trainingExprData = training_expression_data,
                            minNumSamples = 20, 
                            printOutput = T, 
                            removeLowVaringGenesFrom = "homogenizeData")
+
 
 
 ```

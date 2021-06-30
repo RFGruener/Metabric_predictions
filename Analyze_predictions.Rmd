@@ -32,7 +32,7 @@ Get in the clinical information
 metabric_clinical <- read_csv("Metabric Data/Complete_METABRIC_Clinical_Features_Data.csv")
 
 BRCA_clinical <- metabric_clinical %>% 
-  select(Patient_ID, PAM50 = NOT_IN_OSLOVAL_Pam50Subtype) %>% 
+  dplyr::select(Patient_ID, PAM50 = NOT_IN_OSLOVAL_Pam50Subtype) %>% 
   filter(PAM50 %in% c("Normal", "LumA", "LumB", "Her2", "Basal")) %>% 
   mutate(TNBC_status = if_else(PAM50 == "Basal", "Basal", "Non-Basal"))
 ```
@@ -43,7 +43,7 @@ Next we need to load and format the prediction dataset, then we merge it with th
 ```{r format predictions, include = FALSE}
 CTRPDrugPredictions_mat <- read_csv("./calcPhenotype_Output/DrugPredictions.csv")
 
-BRCA_preds <- CTRPDrugPredictions_mat %>% rename("Patient_ID" = X1) 
+BRCA_preds <- CTRPDrugPredictions_mat %>% dplyr::rename("Patient_ID" = X1) 
 
 #checked nad there were no duplicate sample names.
 
@@ -146,7 +146,7 @@ volcano.plot <- t.tst_preds.subtype %>%
     theme_bw(base_size = 16) +
     labs(y = "-log10(adjusted p-value)", 
          x = "Mean Difference (Imputed Effect Basal - Non-Basal)", 
-         caption = c("Drugs More\nEffective in Basal", " Drugs More\nEffective in Non-Basal")) + 
+         caption = c("Drugs More\nEffective in Non-Basal", " Drugs More\nEffective in Basal")) + 
     theme(plot.caption = element_text(hjust=c(1, -0.1))) 
     
 volcano.plot
